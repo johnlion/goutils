@@ -207,3 +207,34 @@ func TestGeoLine_IsContainPoint(t *testing.T) {
 	fmt.Println(line.IsContainPoint(GeoPoint{Lat: 39.783855, Lng: 116.27635}))
 	fmt.Printf("------------end %s------------\n", f.Name())
 }
+
+func TestGeoHashDecodeBits(t *testing.T) {
+	pc, _, _, _ := runtime.Caller(0)
+	f := runtime.FuncForPC(pc)
+	fmt.Printf("\n\n\n------------start %s------------\n", f.Name())
+	lat := 39.956981
+	lng := 116.440488
+	var i uint8
+	for i = 1; i < 32; i++ {
+		geo, _ := GeoHashBitsEncode(lat, lng, i)
+		rect := GeoHashBitsDecode(geo, i)
+		fmt.Fprintf(os.Stdout, "precision=%d\tdist=%v x %v\n", i, int(rect.Width()), int(rect.Height()))
+	}
+	fmt.Printf("------------end %s------------\n", f.Name())
+}
+
+func TestGeoHashBitsNeighbors(t *testing.T) {
+	pc, _, _, _ := runtime.Caller(0)
+	f := runtime.FuncForPC(pc)
+	fmt.Printf("\n\n\n------------start %s------------\n", f.Name())
+	lat := 39.956981
+	lng := 116.440488
+	var pre uint8 = 15
+	nebs := GeoHashBitsNeighbors(lat, lng, pre)
+	for _, n := range nebs {
+		rect := GeoHashBitsDecode(n, pre)
+		fmt.Fprintf(os.Stdout, "dist=%v x %v\n", int(rect.Width()), int(rect.Height()))
+		fmt.Println(rect.GetRectVertex())
+	}
+	fmt.Printf("------------end %s------------\n", f.Name())
+}

@@ -7,6 +7,7 @@ package geo
 
 import (
 	"bytes"
+	"fmt"
 )
 
 const (
@@ -146,4 +147,118 @@ func GetNeighborsGeoCodes(lat, lng float64, precision int) []string {
 	geoHashList[7] = rightUp
 	geoHashList[8] = rightDown
 	return geoHashList
+}
+
+//将geohash编码为uint64类型
+//源自：https://github.com/yinqiwen/geohash-int
+func GeoHashBitsEncode(lat, lng float64, precision uint8) (geo uint64, err error) {
+	if lat < MIN_LATITUDE || lat > MAX_LATITUDE {
+		return 0, fmt.Errorf("invalid lat")
+	}
+	if lng < MIN_LONGITUDE || lng > MAX_LONGITUDE {
+		return 0, fmt.Errorf("invalid lng")
+	}
+	if precision < 1 || precision > 32 {
+		return 0, fmt.Errorf("invalid precision")
+	}
+	var minLat, maxLat = MIN_LATITUDE, MAX_LATITUDE
+	var minLng, maxLng = MIN_LONGITUDE, MAX_LONGITUDE
+	var i uint8
+	for i = 0; i < precision; i++ {
+		var latBit, lngBit uint64
+		if maxLat-lat >= lat-minLat {
+			latBit = 0
+			maxLat = (maxLat + minLat) / 2
+		} else {
+			latBit = 1
+			minLat = (maxLat + minLat) / 2
+		}
+		if maxLng-lng >= lng-minLng {
+			lngBit = 0
+			maxLng = (maxLng + minLng) / 2
+		} else {
+			lngBit = 1
+			minLng = (maxLng + minLng) / 2
+		}
+		geo <<= 1
+		geo += lngBit
+		geo <<= 1
+		geo += latBit
+	}
+	return
+}
+
+//对编码成位的geohash解码成小矩形
+//源自：https://github.com/yinqiwen/geohash-int
+func GeoHashBitsDecode(geohash uint64, precision uint8) *GeoRectangle {
+	rect := GeoRectangle{MinLat: MIN_LATITUDE, MinLng: MIN_LONGITUDE, MaxLat: MAX_LATITUDE, MaxLng: MAX_LONGITUDE}
+	var i uint8
+	for i = 0; i < precision; i++ {
+		var latBit, lngBit uint64
+		lngBit = (geohash >> ((precision-i)*2 - 1)) & 0x01
+		latBit = (geohash >> ((precision-i)*2 - 2)) & 0x01
+		if latBit == 0 {
+			rect.MaxLat = (rect.MaxLat + rect.MinLat) / 2
+		} else {
+			rect.MinLat = (rect.MaxLat + rect.MinLat) / 2
+		}
+		if lngBit == 0 {
+			rect.MaxLng = (rect.MaxLng + rect.MinLng) / 2
+		} else {
+			rect.MinLng = (rect.MaxLng + rect.MinLng) / 2
+		}
+	}
+	return &rect
+}
+
+//获取附近的9个小格子
+func GeoHashBitsNeighbors(lat, lng float64, precision uint8) (ret []uint64) {
+	geohash, err := GeoHashBitsEncode(lat, lng, precision)
+	if err != nil {
+		return
+	}
+	ret = append(
+		ret,
+		geohash, //当前的小格子
+		geohashMoveBits(geohash, precision, 0, 1),   //north
+		geohashMoveBits(geohash, precision, 0, -1),  //south
+		geohashMoveBits(geohash, precision, 1, 0),   //east
+		geohashMoveBits(geohash, precision, -1, 0),  //west
+		geohashMoveBits(geohash, precision, -1, -1), //south_west
+		geohashMoveBits(geohash, precision, 1, -1),  //south_east
+		geohashMoveBits(geohash, precision, -1, 1),  //north_west
+		geohashMoveBits(geohash, precision, 1, 1),   //north_east
+	)
+	return ret
+}
+
+//移位
+func geohashMoveBits(geohash uint64, precision uint8, dx, dy int8) uint64 {
+	if dx != 0 {
+		var x = geohash & 0xaaaaaaaaaaaaaaaa
+		var y = geohash & 0x5555555555555555
+		var zz uint64 = 0x5555555555555555 >> (64 - precision*2)
+		if dx > 0 {
+			x = x + zz + 1
+		} else {
+			x = x | zz
+			x = x - (zz + 1)
+		}
+		x &= 0xaaaaaaaaaaaaaaaa >> (64 - precision*2)
+		geohash = x | y
+	}
+	if dy != 0 {
+		var x = geohash & 0xaaaaaaaaaaaaaaaa
+		var y = geohash & 0x5555555555555555
+		var zz uint64 = 0xaaaaaaaaaaaaaaaa >> (64 - precision*2)
+		if dy > 0 {
+			y = y + zz + 1
+		} else {
+			y = y | zz
+			y = y - (zz + 1)
+		}
+		y &= 0x5555555555555555 >> (64 - precision*2)
+		geohash = x | y
+	}
+	return geohash
 }
