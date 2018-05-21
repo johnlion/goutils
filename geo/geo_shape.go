@@ -76,8 +76,8 @@ func (gl *GeoLine) GetBoundsRect() GeoRectangle {
 }
 
 //是否包含某个点，基本思路：
-//用该点到两端距离跟总距离比较的方式不太靠谱，小数点后面几位后总是有误差
-//这里采用了用该点到直线的外包矩形某顶点再构造一条直线，看看它们是否相交
+//点为Q，线段为P1P2，判断点Q在线段上的依据是：(Q-P1)×(P2-P1)=0
+//且Q在以P1P2为对角定点的矩形内
 func (gl *GeoLine) IsContainPoint(p GeoPoint) bool {
 	rect := gl.GetBoundsRect()
 	if !rect.IsPointInRect(p) {
@@ -86,17 +86,15 @@ func (gl *GeoLine) IsContainPoint(p GeoPoint) bool {
 	if p.IsEqual(gl.Point2) || p.IsEqual(gl.Point1) {
 		return true
 	}
-	p1 := GeoPoint{Lat: gl.Point1.Lat, Lng: gl.Point2.Lng}
-	p2 := GeoPoint{Lat: gl.Point2.Lat, Lng: gl.Point1.Lng}
-	dist1 := EarthDistance(p, p1)
-	dist2 := EarthDistance(p, p2)
-	vp := p1
-	//取一个离该点最近的顶点
-	if dist1 > dist2 {
-		vp = p2
+	p1 := vectorDifference(gl.Point1, gl.Point2)
+	p2 := vectorDifference(p, gl.Point1)
+	cross := vectorCrossProduct(p1, p2)
+	//浮点类型计算时候与0比较时候的容差
+	var floatDiff = 2e-10
+	if math.Abs(0-cross) < floatDiff {
+		return true
 	}
-	line2 := MakeGeoLine(p, vp)
-	return gl.IsIntersectWithLine(line2)
+	return false
 }
 
 //临时方法
@@ -108,25 +106,67 @@ func vectorCrossProduct(p1 GeoPoint, p2 GeoPoint) float64 {
 	return p1.Lat*p2.Lng - p1.Lng*p2.Lat
 }
 
-//与另一条直线是否相交
-//参考：https://stackoverflow.com/questions/563198/how-do-you-detect-where-two-line-segments-intersect
+//与另一条直线是否相交【当一条直接的两个顶点相同时判断有点问题】
 func (gl *GeoLine) IsIntersectWithLine(line GeoLine) bool {
+	_, b := gl.GetIntersectPoint(line)
+	return b
+}
+
+//求两直线交点的坐标
+//参考：https://stackoverflow.com/questions/563198/how-do-you-detect-where-two-line-segments-intersect
+//返回值：交点、是否平行、是否相交
+func (gl *GeoLine) GetIntersectPoint(line GeoLine) (GeoPoint, bool) {
+	if gl.Length() == 0 {
+		if line.IsContainPoint(gl.Point1) || line.IsContainPoint(gl.Point2) {
+			return gl.Point1, true
+		} else {
+			return GeoPoint{}, false
+		}
+	}
+	if line.Length() == 0 {
+		if gl.IsContainPoint(line.Point1) || gl.IsContainPoint(line.Point2) {
+			return line.Point1, true
+		} else {
+			return GeoPoint{}, false
+		}
+	}
 	p := gl.Point1
+	//一线段的向量差
 	r := vectorDifference(gl.Point2, gl.Point1)
 	q := line.Point1
+	//另一线段的向量差
 	s := vectorDifference(line.Point2, line.Point1)
+	//两线段向量差的叉乘
 	rCrossS := vectorCrossProduct(r, s)
 	qMinusP := vectorDifference(q, p)
 	if rCrossS == 0 {
+		//If r × s = 0 and (q − p) × r = 0, then the two lines are collinear.
+		//同一条直线，随便返回一个点即可
 		if vectorCrossProduct(qMinusP, r) == 0 {
-			return true
+			return line.Point1, true
 		} else {
-			return false
+			//If r × s = 0 and (q − p) × r ≠ 0,
+			//then the two lines are parallel and non-intersecting.
+			//两条为平行线，没有交点
+			return GeoPoint{}, false
 		}
 	}
+	//If r × s ≠ 0 and 0 ≤ t ≤ 1 and 0 ≤ u ≤ 1,
+	//the two line segments meet at the point p + t r = q + u s
 	t := vectorCrossProduct(qMinusP, s) / rCrossS
 	u := vectorCrossProduct(qMinusP, r) / rCrossS
-	return t >= 0 && t <= 1 && u >= 0 && u <= 1
+	//有相交点
+	if t >= 0 && t <= 1 && u >= 0 && u <= 1 {
+		p1 := GeoPoint{Lat: gl.Point1.Lat + t*r.Lat, Lng: gl.Point1.Lng + t*r.Lng}
+		p2 := GeoPoint{Lat: line.Point1.Lat + u*s.Lat, Lng: line.Point1.Lng + u*s.Lng}
+		interPoint := p1
+		//如果在计算的时候有点小小的误差，这里直接取中间得了，理论上这两个点应该相等
+		if !p1.IsEqual(p2) {
+			interPoint = MidPoint(p1, p2)
+		}
+		return interPoint, true
+	}
+	return GeoPoint{}, false
 }
 
 //一个圆点
