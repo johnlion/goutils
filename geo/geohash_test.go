@@ -96,7 +96,28 @@ func TestDiffLatLng(t *testing.T) {
 	}
 	fmt.Printf("------------end %s------------\n", f.Name())
 }
-
+func TestGeoLine_GetIntersectPoint(t *testing.T) {
+	pc, _, _, _ := runtime.Caller(0)
+	f := runtime.FuncForPC(pc)
+	fmt.Printf("\n\n\n------------start %s------------\n", f.Name())
+	p1 := GeoPoint{Lat: 39.998006, Lng: 116.322415}
+	p2 := GeoPoint{Lat: 39.851969, Lng: 116.434991}
+	p3 := GeoPoint{Lat: 40.004818, Lng: 116.474552}
+	p4 := GeoPoint{Lat: 39.850391, Lng: 116.326583}
+	line1 := MakeGeoLine(p1, p2)
+	line2 := MakeGeoLine(p3, p4)
+	_, p, b := line1.GetIntersectPoint(line2)
+	fmt.Println(p, b)
+	p1 = GeoPoint{Lat: 39.998006, Lng: 116.322415}
+	p2 = GeoPoint{Lat: 39.851969, Lng: 116.434991}
+	p3 = GeoPoint{Lat: 39.908006, Lng: 116.322415}
+	p4 = GeoPoint{Lat: 39.908006, Lng: 116.922415}
+	line1 = MakeGeoLine(p1, p2)
+	line2 = MakeGeoLine(p3, p4)
+	_, p, b = line1.GetIntersectPoint(line2)
+	fmt.Println(p, b)
+	fmt.Printf("------------end %s------------\n", f.Name())
+}
 func TestMidPoint(t *testing.T) {
 	pc, _, _, _ := runtime.Caller(0)
 	f := runtime.FuncForPC(pc)
