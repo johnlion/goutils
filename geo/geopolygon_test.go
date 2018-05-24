@@ -10,7 +10,6 @@ import (
 	"io"
 	"math/rand"
 	"os"
-	"os/user"
 	"runtime"
 	"testing"
 	"time"
@@ -43,6 +42,10 @@ func TestGeoPolygon_SplitGeoHashRect(t *testing.T) {
 	splitGeoHashRect(polygon, "polygon9", 19)
 	polygon = getPolygon10()
 	splitGeoHashRect(polygon, "polygon10", 15)
+	ps := genSoMuchPolygons(100)
+	for i, p := range ps {
+		splitGeoHashRect(p, fmt.Sprintf("SplitGeoHashRect_%d", i), 13)
+	}
 	fmt.Printf("------------end %s------------\n", f.Name())
 }
 
@@ -257,8 +260,7 @@ func splitGeoHashRect(polygon GeoPolygon, htmlName string, level int) {
 			</body></html>
 			<script type="text/javascript">var map_%s = new BMap.Map("container_%s");window.stdMapCtrl = new BMap.NavigationControl();map_%s.addControl(window.stdMapCtrl);window.scaleCtrl = new BMap.ScaleControl();map_%s.addControl(window.scaleCtrl);window.overviewCtrl = new BMap.OverviewMapControl();map_%s.addControl(window.overviewCtrl);map_%s.addControl(new BMap.CopyrightControl());`
 	htmlStr = fmt.Sprintf(htmlStr, htmlName, htmlName, htmlName, htmlName, htmlName, htmlName, htmlName)
-	cu, _ := user.Current()
-	outHtmlFile := fmt.Sprintf("%s/%s.html", cu.HomeDir, htmlName)
+	outHtmlFile := fmt.Sprintf("./%s.html", htmlName)
 	htmlFP, err1 := os.Create(outHtmlFile) //创建文件
 	if err1 != nil {
 		panic(err1)
