@@ -8,6 +8,7 @@ package geo
 import (
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"os/user"
 	"runtime"
@@ -205,6 +206,46 @@ func getPolygon10() GeoPolygon {
 		{Lng: 116.442213, Lat: 39.915046},
 	})
 	return polygon
+}
+
+//随机生成一万个多边形：3 ~ 20个顶点，并且多边形的边不能相交
+//6环以内的数据
+func genSoMuchPolygons(polygonNum int) (ret []GeoPolygon) {
+	//大概六环的范围
+	baseRect := GeoRectangle{
+		MaxLat: 40.033261,
+		MinLat: 39.822564,
+		MaxLng: 116.554322,
+		MinLng: 116.190975,
+	}
+	var randFloat float64
+	diffLat := baseRect.MaxLat - baseRect.MinLat
+	diffLng := baseRect.MaxLng - baseRect.MinLng
+	for i := 0; i < polygonNum; i++ {
+		//顶点的数量
+		vertexNum := rand.Intn(17) + 3
+		var points []GeoPoint
+		for vn := 0; vn < vertexNum; vn++ {
+			//确保一个多边形的边都不相交
+			for {
+				randFloat = rand.Float64()
+				lat := baseRect.MinLat + randFloat*diffLat
+				randFloat = rand.Float64()
+				lng := baseRect.MinLng + randFloat*diffLng
+				point := MakeGeoPoint(lat, lng)
+				points = append(points, point)
+				polygon := MakeGeoPolygon(points)
+				if polygon.IsBorderInterect() {
+					points = points[0 : len(points)-1]
+					fmt.Println("intersect....skip......")
+				} else {
+					break
+				}
+			}
+		}
+		ret = append(ret, MakeGeoPolygon(points))
+	}
+	return
 }
 
 //将多边形及切格子后的画在地图上
