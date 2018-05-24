@@ -464,121 +464,6 @@ func (gp *GeoPolygon) IsPointInPolygon(p GeoPoint) bool {
 	}
 }
 
-//按geohash方式，将多边形切割成一个一个小格子，这些小格子至少有一个点是位于多边形内的
-//主要应对ES支持自定义配送范围时，有的商家的配送范围巨特么的变态的情况。
-//直接用多边形查会把ES查死，这里将配送范围化成一个个小格子，写到term索引里
-//基本思路：取多边形的最小外包矩形，先切这个矩形成一个个小的geohash小格子，
-//再判断每个格子与多边形是否存在包含或相交的情况，效率较低！还要找更好的办法
-//返回值：所有跟多边形有交集的小格子、完全被包围的小格子、部分在多边形内部的小格子
-func (gp *GeoPolygon) SplitGeoHashRect(precision int) (inRect, interRect []string) {
-	if !gp.Check() {
-		return
-	}
-
-	boundsRect := gp.GetBoundsRect()
-	width := boundsRect.Width()
-	height := boundsRect.Height()
-	polygonBroders := gp.GetPolygonBorders()
-
-	//先从左下角开始：经度、纬度均最小！然后将此小格子逐步向右、向上推进
-	leftUpBaseGeoHash, geoHashBaseRect := GeoHashEncode(boundsRect.MinLat, boundsRect.MinLng, precision)
-
-	//将当前格子添加进去
-	tmpGeoHashList := map[string]bool{}
-	tmpGeoHashList[leftUpBaseGeoHash] = true
-
-	//计算外包矩形左下角到该geohash格子的右框与矩形交点的距离，即第一个小格子跟最小外包矩形重合区域的宽高
-	xBaseLen := EarthDistance(
-		GeoPoint{Lat: boundsRect.MinLat, Lng: boundsRect.MinLng},
-		GeoPoint{Lat: boundsRect.MinLat, Lng: geoHashBaseRect.MaxLng},
-	)
-	yBaseLen := EarthDistance(
-		GeoPoint{Lat: boundsRect.MinLat, Lng: boundsRect.MinLng},
-		GeoPoint{Lat: geoHashBaseRect.MaxLat, Lng: boundsRect.MinLng},
-	)
-
-	//小格子的宽高
-	geoHashRectWidth := geoHashBaseRect.Width()
-	geoHashRectHeight := geoHashBaseRect.Height()
-
-	//修正最小外包矩形的宽高
-	width += geoHashRectWidth
-	height += geoHashRectHeight
-
-	//设置初始值
-	xLen := xBaseLen
-	var rect1 = geoHashBaseRect
-	var xrect *GeoRectangle
-	var ghash string
-
-	//然后向右扩展
-	for xLen <= width {
-		midPoint := rect1.MidPoint()
-		ghash, xrect = GeoHashEncode(midPoint.Lat, midPoint.Lng+rect1.LngSpan(), precision)
-		tmpGeoHashList[ghash] = true
-		xLen += xrect.Width()
-		yLen := yBaseLen
-		//开始向上推进
-		for yLen <= height {
-			midPoint := rect1.MidPoint()
-			ghash, rect1 = GeoHashEncode(midPoint.Lat+rect1.LatSpan(), midPoint.Lng, precision)
-			tmpGeoHashList[ghash] = true
-			yLen += geoHashRectHeight
-		}
-		//再将小格子向右推进一位
-		rect1 = xrect
-	}
-
-	//再逐个对小格子判断：要么小格子的边跟多边形的边有相交、要么小格子有顶点在多边形内
-	for ghash := range tmpGeoHashList {
-		//小格子对应的矩形区域
-		grect := GeoHashDecode(ghash)
-		//小格子的所有的边
-		borders := grect.GetRectBorders()
-		//小格子所有的顶点
-		points := grect.GetRectVertex()
-		isHit := false
-		//遍历小格子所有的边，跟多边形的任一边相交就算成功
-		for _, gb := range borders {
-			if isHit {
-				break
-			}
-			//遍历多边形的边
-			for _, pb := range polygonBroders {
-				//如果两边相交的话
-				if inter, _ := gb.IsIntersectWithLine(pb); inter {
-					isHit = true
-					break
-				}
-			}
-		}
-		//跟任一边相交
-		if isHit {
-			interRect = append(interRect, ghash)
-			continue
-		}
-		//遍历小格子所有的顶点
-		inPointNum := 0
-		for _, p := range points {
-			if gp.IsPointInPolygon(p) {
-				inPointNum++
-			}
-		}
-		//至少有一个点在多边形的内部
-		if inPointNum > 0 {
-			//所有的顶点均在多边形内部
-			if inPointNum == 4 {
-				inRect = append(inRect, ghash)
-			} else {
-				interRect = append(interRect, ghash)
-			}
-			continue
-		}
-	}
-
-	return
-}
-
 /**
 用类似射线法的思想去将多边形切成多个小格子
 先找最小的被外包的geohash的矩形，这个可能要比最小外包矩形大一些，按指定精度填满各个小格子，这个矩形一定包含整数个geohash格子
@@ -591,7 +476,7 @@ func (gp *GeoPolygon) SplitGeoHashRect(precision int) (inRect, interRect []strin
 	左右两个方向上都为奇数个的说明此小格子完全在多边形内部，否则在外部
 http://willdemaine.ghost.io/filling-geofences-with-geohashes/
 */
-func (gp *GeoPolygon) RaySplitGeoHashRect(precision int) (inRect, interRect []string) {
+func (gp *GeoPolygon) SplitGeoHashRect(precision int) (inRect, interRect []string) {
 	if !gp.Check() {
 		return
 	}

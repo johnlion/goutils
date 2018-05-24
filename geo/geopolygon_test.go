@@ -231,7 +231,7 @@ func splitGeoHashRect(polygon GeoPolygon, htmlName string, level int) {
 	}
 	htmlStr += fmt.Sprintf(`ply_%s = new BMap.Polygon(pts);ply_%s.setStrokeColor("red");map_%s.addOverlay(ply_%s);`, htmlName, htmlName, htmlName, htmlName)
 	st := time.Now().UnixNano()
-	inGrids, pGrids := polygon.RaySplitGeoHashRect(6)
+	inGrids, pGrids := polygon.SplitGeoHashRect(6)
 	fmt.Println(htmlName, pT(st, time.Now().UnixNano()))
 	for i, grid := range inGrids {
 		htmlStr = fmt.Sprintf("%svar pts%d = [];", htmlStr, i)
