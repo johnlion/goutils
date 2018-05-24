@@ -156,7 +156,7 @@ func TestGeoPloygon_IsPointInPolygon(t *testing.T) {
 	pc, _, _, _ := runtime.Caller(0)
 	f := runtime.FuncForPC(pc)
 	fmt.Printf("\n\n\n------------start %s------------\n", f.Name())
-	ploygon := GeoPloygon{}
+	ploygon := GeoPolygon{}
 	ploygon.AddPoint(GeoPoint{Lat: 39.972907, Lng: 116.322631})
 	ploygon.AddPoint(GeoPoint{Lat: 39.937953, Lng: 116.346777})
 	ploygon.AddPoint(GeoPoint{Lat: 39.902095, Lng: 116.322056})
@@ -237,4 +237,20 @@ func TestGeoHashBitsNeighbors(t *testing.T) {
 		fmt.Println(rect.GetRectVertex())
 	}
 	fmt.Printf("------------end %s------------\n", f.Name())
+}
+
+// 处理请求的时间proc_time
+// 时间要求time.Now().UnixNano()
+func pT(st, et int64) float64 {
+	var t1 int64 = 0
+	var t2 int64 = 0
+	if st > et {
+		t1 = et
+		t2 = st
+	} else {
+		t1 = st
+		t2 = et
+	}
+	ret := float64(t2-t1) / float64(1000*1000*1000)
+	return ret
 }
