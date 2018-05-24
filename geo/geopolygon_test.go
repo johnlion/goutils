@@ -1,5 +1,5 @@
 /**
- * @author      Liu Yongshuai<liuyongshuai@didichuxing.com>
+ * @author      Liu Yongshuai<liuyongshuai@hotmail.com>
  * @package     es
  * @date        2018-05-23 15:37
  */
@@ -15,6 +15,8 @@ import (
 	"time"
 )
 
+//测试用geohash的小格子去切割任何多边形
+//最后会将生成的点及多边形生成html文件，用百度地图画出来
 func TestGeoPolygon_SplitGeoHashRect(t *testing.T) {
 	pc, _, _, _ := runtime.Caller(0)
 	f := runtime.FuncForPC(pc)
