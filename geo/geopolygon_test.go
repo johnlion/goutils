@@ -21,27 +21,20 @@ func TestGeoPolygon_SplitGeoHashRect(t *testing.T) {
 	pc, _, _, _ := runtime.Caller(0)
 	f := runtime.FuncForPC(pc)
 	fmt.Printf("\n\n\n------------start %s------------\n", f.Name())
-	var polygon GeoPolygon
-	polygon = getPolygon1()
-	splitGeoHashRect(polygon, "polygon1", 13)
-	polygon = getPolygon2()
-	splitGeoHashRect(polygon, "polygon2", 13)
-	polygon = getPolygon3()
-	splitGeoHashRect(polygon, "polygon3", 13)
-	polygon = getPolygon4()
-	splitGeoHashRect(polygon, "polygon4", 13)
-	polygon = getPolygon5()
-	splitGeoHashRect(polygon, "polygon5", 13)
-	polygon = getPolygon6()
-	splitGeoHashRect(polygon, "polygon6", 13)
-	polygon = getPolygon7()
-	splitGeoHashRect(polygon, "polygon7", 13)
-	polygon = getPolygon8()
-	splitGeoHashRect(polygon, "polygon8", 13)
-	polygon = getPolygon9()
-	splitGeoHashRect(polygon, "polygon9", 19)
-	polygon = getPolygon10()
-	splitGeoHashRect(polygon, "polygon10", 15)
+	splitGeoHashRect(getSpecialPolygon1(), "getSpecialPolygon1", 14)
+	splitGeoHashRect(getSpecialPolygon2(), "getSpecialPolygon2", 14)
+	splitGeoHashRect(getSpecialPolygon3(), "getSpecialPolygon3", 14)
+	splitGeoHashRect(getSpecialPolygon4(), "getSpecialPolygon4", 14)
+	splitGeoHashRect(getPolygon1(), "polygon1", 13)
+	splitGeoHashRect(getPolygon2(), "polygon2", 13)
+	splitGeoHashRect(getPolygon3(), "polygon3", 13)
+	splitGeoHashRect(getPolygon4(), "polygon4", 13)
+	splitGeoHashRect(getPolygon5(), "polygon5", 13)
+	splitGeoHashRect(getPolygon6(), "polygon6", 13)
+	splitGeoHashRect(getPolygon7(), "polygon7", 13)
+	splitGeoHashRect(getPolygon8(), "polygon8", 13)
+	splitGeoHashRect(getPolygon9(), "polygon9", 19)
+	splitGeoHashRect(getPolygon10(), "polygon10", 15)
 	ps := genSoMuchPolygons(100)
 	for i, p := range ps {
 		splitGeoHashRect(p, fmt.Sprintf("SplitGeoHashRect_%d", i), 13)
@@ -249,6 +242,102 @@ func genSoMuchPolygons(polygonNum int) (ret []GeoPolygon) {
 		ret = append(ret, MakeGeoPolygon(points))
 	}
 	return
+}
+
+//切多边形的特殊case
+func getSpecialPolygon1() GeoPolygon {
+	stp := 6
+	var points []GeoPoint
+	points = append(points, GeoPoint{Lng: 116.315426, Lat: 40.012642})
+	_, bRect := GeoHashEncode(39.998016, 116.322289, stp)
+	p1 := GeoPoint{Lng: bRect.MaxLng, Lat: bRect.MaxLat}
+	points = append(points, p1)
+	p2 := GeoPoint{Lng: bRect.MaxLng + bRect.LngSpan(), Lat: bRect.MaxLat}
+	points = append(points, p2)
+	p3 := GeoPoint{Lng: p2.Lng + bRect.LngSpan(), Lat: p2.Lat + bRect.LatSpan()}
+	points = append(points, p3)
+	p4 := GeoPoint{Lng: p3.Lng + bRect.LngSpan(), Lat: bRect.MinLat}
+	points = append(points, p4)
+	p5 := GeoPoint{Lng: p4.Lng + 2*bRect.LngSpan(), Lat: p3.Lat}
+	points = append(points, p5)
+	p6 := GeoPoint{Lng: p4.Lng + 2*bRect.LngSpan(), Lat: p4.Lat}
+	points = append(points, p6)
+	p7 := GeoPoint{Lng: p5.Lng + 2*bRect.LngSpan(), Lat: p5.Lat}
+	points = append(points, p7)
+	p8 := GeoPoint{Lng: p6.Lng, Lat: p6.Lat - 8*bRect.LatSpan()}
+	points = append(points, p8)
+	p9 := GeoPoint{Lng: p6.Lng - 8*bRect.LngSpan(), Lat: p8.Lat}
+	points = append(points, p9)
+	p10 := GeoPoint{Lng: p9.Lng, Lat: bRect.MaxLat}
+	points = append(points, p10)
+	return MakeGeoPolygon(points)
+}
+
+//切多边形的特殊case
+func getSpecialPolygon2() GeoPolygon {
+	stp := 6
+	var points []GeoPoint
+	_, bRect := GeoHashEncode(39.998016, 116.322289, stp)
+	b := bRect.Width() / bRect.Height()
+	points = append(points, bRect.RightBottomPoint())
+	points = append(points, GeoPoint{
+		Lng: bRect.MaxLng,
+		Lat: bRect.MaxLat + 10*bRect.LatSpan(),
+	})
+	points = append(points, GeoPoint{
+		Lat: bRect.MinLat,
+		Lng: bRect.MaxLng - 10*b*bRect.LngSpan(),
+	})
+	return MakeGeoPolygon(points)
+}
+
+//切多边形的特殊case
+func getSpecialPolygon3() GeoPolygon {
+	stp := 6
+	var points []GeoPoint
+	geos := GetNeighborsGeoCodes(39.998016, 116.322289, stp)
+
+	rightBottom := GeoHashDecode(geos[8])
+	rightUp := GeoHashDecode(geos[7])
+	leftBottom := GeoHashDecode(geos[6])
+	points = append(points,
+		rightUp.RightUpPoint(),
+		leftBottom.LeftBottomPoint(),
+		rightBottom.RightBottomPoint(),
+	)
+	return MakeGeoPolygon(points)
+}
+
+//切多边形的特殊case
+func getSpecialPolygon4() GeoPolygon {
+	stp := 6
+	var points []GeoPoint
+	geos := GetNeighborsGeoCodes(39.998016, 116.322289, stp)
+	//center := GeoHashDecode(geos[0])
+	centerUp := GeoHashDecode(geos[1])
+	centerBottom := GeoHashDecode(geos[2])
+	//leftCenter:=GeoHashDecode(geos[3] )
+	//rightCenter:=GeoHashDecode(geos[4] )
+	leftUp := GeoHashDecode(geos[5])
+	leftBottom := GeoHashDecode(geos[6])
+	rightUp := GeoHashDecode(geos[7])
+	rightBottom := GeoHashDecode(geos[8])
+
+	points = append(points,
+		centerUp.RightBottomPoint(),
+		centerUp.RightUpPoint(),
+		rightUp.RightUpPoint(),
+		rightBottom.RightBottomPoint(),
+		centerBottom.RightBottomPoint(),
+		centerBottom.RightUpPoint(),
+		centerBottom.LeftUpPoint(),
+		centerBottom.LeftBottomPoint(),
+		leftBottom.LeftBottomPoint(),
+		leftUp.LeftUpPoint(),
+		leftUp.RightUpPoint(),
+		leftUp.RightBottomPoint(),
+	)
+	return MakeGeoPolygon(points)
 }
 
 //将多边形及切格子后的画在地图上
