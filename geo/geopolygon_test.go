@@ -46,7 +46,7 @@ func TestGeoPolygon_SplitGeoHashRect(t *testing.T) {
 		MinLat: 39.822564,
 		MaxLng: 116.554322,
 		MinLng: 116.190975,
-	}, 100, 3, 20)
+	}, 10, 3, 20)
 	for i, p := range ps {
 		splitGeoHashRect(p, fmt.Sprintf("SplitGeoHashRect_%d", i), 13)
 	}
