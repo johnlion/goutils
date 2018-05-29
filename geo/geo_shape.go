@@ -538,6 +538,9 @@ func (gp *GeoPolygon) IsPointInPolygon(p GeoPoint) bool {
 		} else {
 			if p.Lat == p2.Lat && p.Lng <= p2.Lng {
 				p3 := points[(i+1)%PNum]
+				if p3.IsEqual(p2) {
+					p3 = points[(i+2)%PNum]
+				}
 				if p.Lat >= math.Min(p1.Lat, p3.Lat) && p.Lat <= math.Max(p1.Lat, p3.Lat) {
 					interCount++
 				} else {
@@ -624,29 +627,29 @@ func (gp *GeoPolygon) SplitGeoHashRect(precision int) (inRect, interRect []strin
 	basePoint := leftUpRect.MidPoint()
 
 	//线段与多边形的交点情况，缓存交点用的，保证每个切线只计算一次
-	lineInterMap := map[string]map[GeoLine]GeoPoint{}
+	lineInterCache := map[string]map[GeoLine]GeoPoint{}
 
 	//小格子的四个边的延长线与多边形交点情况
 	var topInters, bottomInters, leftInters, rightInters map[GeoLine]GeoPoint
 	var ok bool
 
 	//从左到右、从上到下遍历所有的小格子
-	for vi := 0; vi < verNum; vi++ {
+	for verInterator := 0; verInterator < verNum; verInterator++ {
 		//最左边的小格子的经度都一样，纬度逐次减小
-		baseLat := basePoint.Lat - float64(vi)*diffLat
+		baseLat := basePoint.Lat - float64(verInterator)*diffLat
 		baseLng := basePoint.Lng
-		for hi := 0; hi < horiNum; hi++ {
+		for horiInterator := 0; horiInterator < horiNum; horiInterator++ {
 			//当前小格子的geo值及小格子矩形
-			geo, tRect := GeoHashEncode(baseLat, baseLng+float64(hi)*diffLng, stp)
+			geo, tRect := GeoHashEncode(baseLat, baseLng+float64(horiInterator)*diffLng, stp)
 
 			//小格子上边框的延长线、及与多边形每个边的交点情况
 			topLine := GeoLine{
 				Point1: GeoPoint{Lat: tRect.MaxLat, Lng: geoRect.MinLng - 1},
 				Point2: GeoPoint{Lat: tRect.MaxLat, Lng: geoRect.MaxLng + 1},
 			}
-			if topInters, ok = lineInterMap[topLine.FormatStr()]; !ok {
+			if topInters, ok = lineInterCache[topLine.FormatStr()]; !ok {
 				topInters = gp.interPointsWithHorizontalLine(topLine)
-				lineInterMap[topLine.FormatStr()] = topInters
+				lineInterCache[topLine.FormatStr()] = topInters
 			}
 
 			//小格子下边框延长线、及与多边形各边交点情况
@@ -654,9 +657,9 @@ func (gp *GeoPolygon) SplitGeoHashRect(precision int) (inRect, interRect []strin
 				Point1: GeoPoint{Lat: tRect.MinLat, Lng: geoRect.MinLng - 1},
 				Point2: GeoPoint{Lat: tRect.MinLat, Lng: geoRect.MaxLng + 1},
 			}
-			if bottomInters, ok = lineInterMap[bottomLine.FormatStr()]; !ok {
+			if bottomInters, ok = lineInterCache[bottomLine.FormatStr()]; !ok {
 				bottomInters = gp.interPointsWithHorizontalLine(bottomLine)
-				lineInterMap[bottomLine.FormatStr()] = bottomInters
+				lineInterCache[bottomLine.FormatStr()] = bottomInters
 			}
 
 			//小格子左边框延长线、及与多边形各边交点情况
@@ -664,9 +667,9 @@ func (gp *GeoPolygon) SplitGeoHashRect(precision int) (inRect, interRect []strin
 				Point1: GeoPoint{Lat: geoRect.MaxLat + 1, Lng: tRect.MinLng},
 				Point2: GeoPoint{Lat: geoRect.MinLat - 1, Lng: tRect.MinLng},
 			}
-			if leftInters, ok = lineInterMap[leftLine.FormatStr()]; !ok {
+			if leftInters, ok = lineInterCache[leftLine.FormatStr()]; !ok {
 				leftInters = gp.interPointsWithVertialLine(leftLine)
-				lineInterMap[leftLine.FormatStr()] = leftInters
+				lineInterCache[leftLine.FormatStr()] = leftInters
 			}
 
 			//小格子右边框延长线、及与多边形各边交点情况
@@ -674,32 +677,37 @@ func (gp *GeoPolygon) SplitGeoHashRect(precision int) (inRect, interRect []strin
 				Point1: GeoPoint{Lat: geoRect.MaxLat + 1, Lng: tRect.MaxLng},
 				Point2: GeoPoint{Lat: geoRect.MinLat - 1, Lng: tRect.MaxLng},
 			}
-			if rightInters, ok = lineInterMap[rightLine.FormatStr()]; !ok {
+			if rightInters, ok = lineInterCache[rightLine.FormatStr()]; !ok {
 				rightInters = gp.interPointsWithVertialLine(rightLine)
-				lineInterMap[rightLine.FormatStr()] = rightInters
+				lineInterCache[rightLine.FormatStr()] = rightInters
 			}
+
+			//TODO 既然得到了上下左右四线的交点情况，有没有可能将这一排或这一列的小格子都一起判断？
 
 			isContinue := false
 
 			//底边框跟多边形的交点不符合在多边形内部的情况
 			for border, interPoint := range bottomInters {
-				//如果交点位于小格子相应边框的非顶点上
+				//如果交点位于小格子底边框的非顶点上，即只位于底边框线段中间某个位置上
+				//且多边形的相应边的另一顶点在下边框的上方，此时必定是半包围的小格子
 				if interPoint.Lng > tRect.MinLng && interPoint.Lng < tRect.MaxLng {
-					interRect = append(interRect, geo)
-					isContinue = true
-					break
-				}
-				//如果交点在小格子的某个角上，同时又跟对角线上对应的点相交
-				topInterPoint, ok := topInters[border]
-				if ok {
-					if interPoint.IsEqual(tRect.LeftBottomPoint()) &&
-						topInterPoint.IsEqual(tRect.RightUpPoint()) ||
-						interPoint.IsEqual(tRect.RightBottomPoint()) &&
-							topInterPoint.IsEqual(tRect.LeftUpPoint()) {
+					if border.Point1.Lat > interPoint.Lat || border.Point2.Lat > interPoint.Lat {
 						interRect = append(interRect, geo)
 						isContinue = true
 						break
 					}
+				}
+				//考虑到特殊情况，即此边正好和小格子对角线部分重合
+				//如果交点在小格子的某个角上，同时又跟对角线上对应的点相交
+				topInterPoint, ok := topInters[border]
+				if !ok {
+					continue
+				}
+				if interPoint.Lng == tRect.MinLng && topInterPoint.Lng == tRect.MaxLng ||
+					interPoint.Lng == tRect.MaxLng && topInterPoint.Lng == tRect.MinLng {
+					interRect = append(interRect, geo)
+					isContinue = true
+					break
 				}
 			}
 			if isContinue {
@@ -708,23 +716,26 @@ func (gp *GeoPolygon) SplitGeoHashRect(precision int) (inRect, interRect []strin
 
 			//左边垂线的交点在边框上
 			for border, interPoint := range leftInters {
-				//如果交点位于小格子相应边框的非顶点上
+				//如果交点位于小格子左边框的非顶点上，即只位于左边框线段中间某个位置上
+				//且多边形的相应边的另一顶点在左边框的右方，此时必定是半包围的小格子
 				if interPoint.Lat < tRect.MaxLat && interPoint.Lat > tRect.MinLat {
-					interRect = append(interRect, geo)
-					isContinue = true
-					break
-				}
-				//如果交点在小格子的某个角上，同时又跟对角线上对应的点相交
-				rightInterPoint, ok := rightInters[border]
-				if ok {
-					if interPoint.IsEqual(tRect.LeftBottomPoint()) &&
-						rightInterPoint.IsEqual(tRect.RightUpPoint()) ||
-						interPoint.IsEqual(tRect.LeftUpPoint()) &&
-							rightInterPoint.IsEqual(tRect.RightBottomPoint()) {
+					if border.Point1.Lng > interPoint.Lng || border.Point2.Lng > interPoint.Lng {
 						interRect = append(interRect, geo)
 						isContinue = true
 						break
 					}
+				}
+				//考虑到特殊情况，即此边正好和小格子对角线部分重合
+				//如果交点在小格子的某个角上，同时又跟对角线上对应的点相交
+				rightInterPoint, ok := rightInters[border]
+				if !ok {
+					continue
+				}
+				if interPoint.Lat == tRect.MaxLat && rightInterPoint.Lat == tRect.MinLat ||
+					interPoint.Lat == tRect.MinLat && rightInterPoint.Lat == tRect.MaxLat {
+					interRect = append(interRect, geo)
+					isContinue = true
+					break
 				}
 			}
 			if isContinue {
@@ -732,12 +743,15 @@ func (gp *GeoPolygon) SplitGeoHashRect(precision int) (inRect, interRect []strin
 			}
 
 			//右边框的交点在边框上
-			for _, interPoint := range rightInters {
-				//如果交点位于小格子相应边框的非顶点上
+			for border, interPoint := range rightInters {
+				//如果交点位于小格子右边框的非顶点上，即只位于右边框线段中间某个位置上
+				//且多边形的相应边的另一顶点在右边框的左方，此时必定是半包围的小格子
 				if interPoint.Lat < tRect.MaxLat && interPoint.Lat > tRect.MinLat {
-					interRect = append(interRect, geo)
-					isContinue = true
-					break
+					if border.Point1.Lng < interPoint.Lng || border.Point2.Lng < interPoint.Lng {
+						interRect = append(interRect, geo)
+						isContinue = true
+						break
+					}
 				}
 			}
 			if isContinue {
@@ -747,18 +761,24 @@ func (gp *GeoPolygon) SplitGeoHashRect(precision int) (inRect, interRect []strin
 			//对于上下边框，判断小格子左右两边的交点情况
 			leftNum := 0
 			rightNum := 0
-			for _, interPoint := range topInters {
+			for border, interPoint := range topInters {
+				//上边框向左的射线跟多边形的交点情况
 				if interPoint.Lng <= tRect.MinLng {
 					leftNum++
 					continue
 				}
+				//上边框向右的射线跟多边形的交点情况
 				if interPoint.Lng >= tRect.MaxLng {
 					rightNum++
 					continue
 				}
-				interRect = append(interRect, geo)
-				isContinue = true
-				break
+				//如果交点位于小格子上边框的非顶点上，即只位于上边框线段中间某个位置上
+				//且多边形的相应边的另一顶点在上边框的下方，此时必定是半包围的小格子
+				if border.Point1.Lat < interPoint.Lat || border.Point2.Lat < interPoint.Lat {
+					interRect = append(interRect, geo)
+					isContinue = true
+					break
+				}
 			}
 			if isContinue {
 				continue
@@ -795,12 +815,14 @@ func (gp *GeoPolygon) interPointsWithHorizontalLine(line GeoLine) (ret map[GeoLi
 		//如果交点在其顶点上，并且另一点的纬度大于横线的不要，否则就算有交点
 		if border.Point1.Lat == lineLat && border.Point1.Lng >= minLng && border.Point1.Lng <= maxLng {
 			if border.Point2.Lat <= lineLat {
+				border.Point1.Lat = lineLat
 				ret[border] = border.Point1
 			}
 			continue
 		}
 		if border.Point2.Lat == lineLat && border.Point2.Lng >= minLng && border.Point2.Lng <= maxLng {
 			if border.Point1.Lat <= lineLat {
+				border.Point1.Lat = lineLat
 				ret[border] = border.Point2
 			}
 			continue
@@ -808,6 +830,7 @@ func (gp *GeoPolygon) interPointsWithHorizontalLine(line GeoLine) (ret map[GeoLi
 		//普通的相交
 		p, isParallel, isInter := border.GetIntersectPoint(line)
 		if isInter && !isParallel {
+			p.Lat = lineLat
 			ret[border] = p
 		}
 	}
@@ -833,6 +856,7 @@ func (gp *GeoPolygon) interPointsWithVertialLine(line GeoLine) (ret map[GeoLine]
 		//普通的相交
 		p, isParallel, isInter := border.GetIntersectPoint(line)
 		if isInter && !isParallel {
+			p.Lng = lineLng
 			ret[border] = p
 		}
 	}

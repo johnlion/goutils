@@ -6,14 +6,17 @@
 package geo
 
 import (
+	"bytes"
 	"fmt"
+	"html/template"
 	"io"
-	"math/rand"
 	"os"
 	"runtime"
 	"testing"
 	"time"
 )
+
+var stp = 6
 
 //测试用geohash的小格子去切割任何多边形
 //最后会将生成的点及多边形生成html文件，用百度地图画出来
@@ -25,6 +28,7 @@ func TestGeoPolygon_SplitGeoHashRect(t *testing.T) {
 	splitGeoHashRect(getSpecialPolygon2(), "getSpecialPolygon2", 14)
 	splitGeoHashRect(getSpecialPolygon3(), "getSpecialPolygon3", 14)
 	splitGeoHashRect(getSpecialPolygon4(), "getSpecialPolygon4", 14)
+	splitGeoHashRect(getSpecialPolygon5(), "getSpecialPolygon5", 14)
 	splitGeoHashRect(getPolygon1(), "polygon1", 13)
 	splitGeoHashRect(getPolygon2(), "polygon2", 13)
 	splitGeoHashRect(getPolygon3(), "polygon3", 13)
@@ -35,14 +39,21 @@ func TestGeoPolygon_SplitGeoHashRect(t *testing.T) {
 	splitGeoHashRect(getPolygon8(), "polygon8", 13)
 	splitGeoHashRect(getPolygon9(), "polygon9", 19)
 	splitGeoHashRect(getPolygon10(), "polygon10", 15)
-	ps := genSoMuchPolygons(100)
+	splitGeoHashRect(getPolygon11(), "polygon11", 15)
+	splitGeoHashRect(getPolygon12(), "polygon12", 15)
+	ps := GenPolygons(GeoRectangle{
+		MaxLat: 40.033261,
+		MinLat: 39.822564,
+		MaxLng: 116.554322,
+		MinLng: 116.190975,
+	}, 100, 3, 20)
 	for i, p := range ps {
 		splitGeoHashRect(p, fmt.Sprintf("SplitGeoHashRect_%d", i), 13)
 	}
 	fmt.Printf("------------end %s------------\n", f.Name())
 }
 
-//凸多边形
+//凸多边形：http://10.96.112.48/polygon1.html
 func getPolygon1() GeoPolygon {
 	polygon := MakeGeoPolygon([]GeoPoint{
 		{Lng: 116.385297, Lat: 39.993252},
@@ -56,6 +67,8 @@ func getPolygon1() GeoPolygon {
 	})
 	return polygon
 }
+
+//http://10.96.112.48/polygon2.html
 func getPolygon2() GeoPolygon {
 	polygon := MakeGeoPolygon([]GeoPoint{
 		{Lng: 116.399669, Lat: 40.004307},
@@ -72,7 +85,7 @@ func getPolygon2() GeoPolygon {
 	return polygon
 }
 
-//爆炸形状
+//http://10.96.112.48/polygon3.html
 func getPolygon3() GeoPolygon {
 	p := MakeGeoPoint(39.923664, 116.403424)
 	var points []GeoPoint
@@ -89,6 +102,8 @@ func getPolygon3() GeoPolygon {
 	}
 	return MakeGeoPolygon(points)
 }
+
+//http://10.96.112.48/polygon4.html
 func getPolygon4() GeoPolygon {
 	//{39.869384765625 116.279296875 39.9957275390625 116.455078125}
 	polygon := MakeGeoPolygon([]GeoPoint{
@@ -100,6 +115,8 @@ func getPolygon4() GeoPolygon {
 	return polygon
 
 }
+
+//http://10.96.112.48/polygon5.html
 func getPolygon5() GeoPolygon {
 	polygon := MakeGeoPolygon([]GeoPoint{
 		{Lng: 116.315013, Lat: 39.969147},
@@ -119,6 +136,8 @@ func getPolygon5() GeoPolygon {
 	})
 	return polygon
 }
+
+//http://10.96.112.48/polygon6.html
 func getPolygon6() GeoPolygon {
 	polygon := MakeGeoPolygon([]GeoPoint{
 		{Lng: 116.314438, Lat: 39.968926},
@@ -145,6 +164,8 @@ func getPolygon6() GeoPolygon {
 	})
 	return polygon
 }
+
+//http://10.96.112.48/polygon7.html
 func getPolygon7() GeoPolygon {
 	polygon := MakeGeoPolygon([]GeoPoint{
 		{Lng: 116.30797, Lat: 39.991926},
@@ -170,6 +191,8 @@ func getPolygon7() GeoPolygon {
 	})
 	return polygon
 }
+
+//http://10.96.112.48/polygon8.html
 func getPolygon8() GeoPolygon {
 	polygon := MakeGeoPolygon([]GeoPoint{
 		{Lng: 116.328667, Lat: 39.972907},
@@ -184,6 +207,8 @@ func getPolygon8() GeoPolygon {
 	})
 	return polygon
 }
+
+//http://10.96.112.48/polygon9.html
 func getPolygon9() GeoPolygon {
 	polygon := MakeGeoPolygon([]GeoPoint{
 		{Lng: 116.403685, Lat: 39.909262},
@@ -194,6 +219,7 @@ func getPolygon9() GeoPolygon {
 	return polygon
 }
 
+//http://10.96.112.48/polygon10.html
 func getPolygon10() GeoPolygon {
 	polygon := MakeGeoPolygon([]GeoPoint{
 		{Lng: 116.363126, Lat: 39.913468},
@@ -204,49 +230,33 @@ func getPolygon10() GeoPolygon {
 	return polygon
 }
 
-//随机生成一万个多边形：3 ~ 20个顶点，并且多边形的边不能相交
-//6环以内的数据
-func genSoMuchPolygons(polygonNum int) (ret []GeoPolygon) {
-	//大概六环的范围
-	baseRect := GeoRectangle{
-		MaxLat: 40.033261,
-		MinLat: 39.822564,
-		MaxLng: 116.554322,
-		MinLng: 116.190975,
-	}
-	var randFloat float64
-	diffLat := baseRect.MaxLat - baseRect.MinLat
-	diffLng := baseRect.MaxLng - baseRect.MinLng
-	for i := 0; i < polygonNum; i++ {
-		//顶点的数量
-		vertexNum := rand.Intn(17) + 3
-		var points []GeoPoint
-		for vn := 0; vn < vertexNum; vn++ {
-			//确保一个多边形的边都不相交
-			for {
-				randFloat = rand.Float64()
-				lat := baseRect.MinLat + randFloat*diffLat
-				randFloat = rand.Float64()
-				lng := baseRect.MinLng + randFloat*diffLng
-				point := MakeGeoPoint(lat, lng)
-				points = append(points, point)
-				polygon := MakeGeoPolygon(points)
-				if polygon.IsBorderInterect() {
-					points = points[0 : len(points)-1]
-					fmt.Println("intersect....skip......")
-				} else {
-					break
-				}
-			}
-		}
-		ret = append(ret, MakeGeoPolygon(points))
-	}
-	return
+//http://10.96.112.48/polygon11.html
+func getPolygon11() GeoPolygon {
+	polygon := MakeGeoPolygon([]GeoPoint{
+		{Lng: 116.211097, Lat: 39.913607},
+		{Lng: 116.584217, Lat: 39.913607},
+		{Lng: 116.385871, Lat: 40.07943},
+	})
+	return polygon
+}
+
+//http://10.96.112.48/polygon12.html
+func getPolygon12() GeoPolygon {
+	polygon := MakeGeoPolygon([]GeoPoint{
+		{Lng: 116.305383, Lat: 39.991262},
+		{Lng: 116.452562, Lat: 39.991262},
+		{Lng: 116.452562, Lat: 39.966493},
+		{Lng: 116.385122, Lat: 39.966493},
+		{Lng: 116.385122, Lat: 39.889031},
+		{Lng: 116.380132, Lat: 39.889031},
+		{Lng: 116.380122, Lat: 39.966493},
+		{Lng: 116.305383, Lat: 39.966493},
+	})
+	return polygon
 }
 
 //切多边形的特殊case
 func getSpecialPolygon1() GeoPolygon {
-	stp := 6
 	var points []GeoPoint
 	points = append(points, GeoPoint{Lng: 116.315426, Lat: 40.012642})
 	_, bRect := GeoHashEncode(39.998016, 116.322289, stp)
@@ -275,7 +285,6 @@ func getSpecialPolygon1() GeoPolygon {
 
 //切多边形的特殊case
 func getSpecialPolygon2() GeoPolygon {
-	stp := 6
 	var points []GeoPoint
 	_, bRect := GeoHashEncode(39.998016, 116.322289, stp)
 	b := bRect.Width() / bRect.Height()
@@ -293,7 +302,6 @@ func getSpecialPolygon2() GeoPolygon {
 
 //切多边形的特殊case
 func getSpecialPolygon3() GeoPolygon {
-	stp := 6
 	var points []GeoPoint
 	geos := GetNeighborsGeoCodes(39.998016, 116.322289, stp)
 
@@ -310,7 +318,6 @@ func getSpecialPolygon3() GeoPolygon {
 
 //切多边形的特殊case
 func getSpecialPolygon4() GeoPolygon {
-	stp := 6
 	var points []GeoPoint
 	geos := GetNeighborsGeoCodes(39.998016, 116.322289, stp)
 	//center := GeoHashDecode(geos[0])
@@ -340,55 +347,156 @@ func getSpecialPolygon4() GeoPolygon {
 	return MakeGeoPolygon(points)
 }
 
+//切多边形的特殊case
+func getSpecialPolygon5() GeoPolygon {
+	var points []GeoPoint
+	_, tRect := GeoHashEncode(39.998016, 116.322289, stp)
+	points = append(points, GeoPoint{Lat: 39.9957275390625, Lng: 116.31774915309339})
+	p2 := GeoPoint{Lat: tRect.MinLat - tRect.LatSpan(), Lng: tRect.MaxLng}
+	points = append(points, p2)
+	p3 := GeoPoint{Lat: tRect.MaxLat, Lng: tRect.MaxLng + tRect.LngSpan()}
+	points = append(points, p3)
+	p4 := GeoPoint{Lat: tRect.MinLat - 3*tRect.LatSpan(), Lng: p3.Lng}
+	points = append(points, p4)
+	p5 := GeoPoint{Lat: p4.Lat, Lng: p4.Lng - 6*tRect.LngSpan()}
+	points = append(points, p5)
+	p6 := GeoPoint{Lat: p3.Lat, Lng: p3.Lng - 6*tRect.LngSpan()}
+	points = append(points, p6)
+	p7 := GeoPoint{Lat: tRect.MinLat - tRect.LatSpan(), Lng: tRect.MinLng}
+	points = append(points, p7)
+	return MakeGeoPolygon(points)
+}
+
 //将多边形及切格子后的画在地图上
-func splitGeoHashRect(polygon GeoPolygon, htmlName string, level int) {
-	htmlStr := `<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><title>切格子效果观察</title>
-			<script type="text/javascript" src="http://api.map.baidu.com/api?v=1.2"></script><script type="text/javascript" src="http://api.map.baidu.com/library/GeoUtils/1.2/src/GeoUtils_min.js"></script>
-			</head><body>
-				<div style="width:100%%;height:100%%;border:1px solid gray" id="container_%s"></div>
-			</body></html>
-			<script type="text/javascript">var map_%s = new BMap.Map("container_%s");window.stdMapCtrl = new BMap.NavigationControl();map_%s.addControl(window.stdMapCtrl);window.scaleCtrl = new BMap.ScaleControl();map_%s.addControl(window.scaleCtrl);window.overviewCtrl = new BMap.OverviewMapControl();map_%s.addControl(window.overviewCtrl);map_%s.addControl(new BMap.CopyrightControl());`
-	htmlStr = fmt.Sprintf(htmlStr, htmlName, htmlName, htmlName, htmlName, htmlName, htmlName, htmlName)
+func splitGeoHashRect(
+	polygon GeoPolygon, //多边形
+	htmlName string, //生成的html文件识别名称
+	level int, //百度地图显示的级别
+) float64 {
+	//多边形的顶点、中心点坐标
+	polygonRect := polygon.GetBoundsRect()
+	midPoint := polygonRect.MidPoint()
+	polygonPoints := polygon.GetPoints()
+
+	//用不同的方法切格子
+	st := time.Now().UnixNano()
+	var inGrids, pGrids []string
+	inGrids, pGrids = polygon.SplitGeoHashRect(stp)
+	et := time.Now().UnixNano()
+	diff := pT(st, et)
+
+	//收集所有的小格子的经纬度坐标信息
+	var inRectList [][]GeoPoint
+	var broderRectList [][]GeoPoint
+	for _, grid := range inGrids {
+		rect := GeoHashDecode(grid)
+		inRectList = append(inRectList, rect.GetRectVertex())
+	}
+	for _, grid := range pGrids {
+		rect := GeoHashDecode(grid)
+		broderRectList = append(broderRectList, rect.GetRectVertex())
+	}
+
+	//输出到模板
+	buf := bytes.Buffer{}
+	tpl := template.New("polygon")
+	_, err := tpl.Parse(geoPolygonHtmlTemplate)
+	if err != nil {
+		panic(err)
+	}
+	err = tpl.Execute(&buf, map[string]interface{}{
+		"tplName":        htmlName,
+		"midPoint":       midPoint,
+		"mapLevel":       level,
+		"polygonPoints":  polygonPoints,
+		"inRectList":     inRectList,
+		"borderRectList": broderRectList,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	//输出html文件的目录
 	outHtmlFile := fmt.Sprintf("./%s.html", htmlName)
 	htmlFP, err1 := os.Create(outHtmlFile) //创建文件
 	if err1 != nil {
 		panic(err1)
 	}
-	polygonRect := polygon.GetBoundsRect()
-	midPoint := polygonRect.MidPoint()
-	htmlStr = fmt.Sprintf("%svar pt_%s = new BMap.Point(%v,%v);", htmlStr, htmlName, midPoint.Lng, midPoint.Lat)
-	htmlStr += fmt.Sprintf(`var mkr_%s = new BMap.Marker(pt_%s);var ply_%s;map_%s.centerAndZoom(pt_%s, %d);map_%s.enableContinuousZoom();polygon1_%s();function polygon1_%s() {var pts = [];`, htmlName, htmlName, htmlName, htmlName, htmlName, level, htmlName, htmlName, htmlName)
 
-	polygonPoints := polygon.GetPoints()
-	for _, p := range polygonPoints {
-		htmlStr = fmt.Sprintf("%spts.push(new BMap.Point(%v,%v));", htmlStr, p.Lng, p.Lat)
-	}
-	htmlStr += fmt.Sprintf(`ply_%s = new BMap.Polygon(pts);ply_%s.setStrokeColor("red");map_%s.addOverlay(ply_%s);`, htmlName, htmlName, htmlName, htmlName)
-	st := time.Now().UnixNano()
-	inGrids, pGrids := polygon.SplitGeoHashRect(6)
-	fmt.Println(htmlName, pT(st, time.Now().UnixNano()))
-	for i, grid := range inGrids {
-		htmlStr = fmt.Sprintf("%svar pts%d = [];", htmlStr, i)
-		rect := GeoHashDecode(grid)
-		ps := rect.GetRectVertex()
-		for _, p := range ps {
-			htmlStr = fmt.Sprintf("%spts%d.push(new BMap.Point(%v,%v));", htmlStr, i, p.Lng, p.Lat)
-		}
-		htmlStr = fmt.Sprintf("%svar ply_%s_%d=new BMap.Polygon(pts%d);ply_%s_%d.setStrokeWeight('1');map_%s.addOverlay(ply_%s_%d);", htmlStr, htmlName, i, i, htmlName, i, htmlName, htmlName, i)
-	}
-	for i, grid := range pGrids {
-		htmlStr = fmt.Sprintf("%svar pts%d = [];", htmlStr, i)
-		rect := GeoHashDecode(grid)
-		ps := rect.GetRectVertex()
-		for _, p := range ps {
-			htmlStr = fmt.Sprintf("%spts%d.push(new BMap.Point(%v,%v));", htmlStr, i, p.Lng, p.Lat)
-		}
-		htmlStr = fmt.Sprintf("%svar ply_%s_%d=new BMap.Polygon(pts%d);ply_%s_%d.setStrokeWeight('1');ply_%s_%d.setStrokeStyle('dashed');ply_%s_%d.setFillColor('#F0F8FF');map_%s.addOverlay(ply_%s_%d);", htmlStr, htmlName, i, i, htmlName, i, htmlName, i, htmlName, i, htmlName, htmlName, i)
-	}
-	htmlStr += `}</script>`
-	_, err1 = io.WriteString(htmlFP, htmlStr)
+	//写入到相应的html文件里
+	fmt.Println(htmlName, diff, "\toutHtmlFile：", outHtmlFile)
+	_, err1 = io.WriteString(htmlFP, buf.String())
 	if err1 != nil {
 		fmt.Println(err1)
 	}
-	fmt.Println("outHtmlFile：", outHtmlFile)
+	return diff
 }
+
+//画多边形的模板
+var geoPolygonHtmlTemplate = `
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+		<title>切格子效果观察</title>
+		<script type="text/javascript" src="http://api.map.baidu.com/api?v=1.2"></script>
+		<script type="text/javascript" src="http://api.map.baidu.com/library/GeoUtils/1.2/src/GeoUtils_min.js"></script>
+	</head>
+	<body>
+		<div style="width:100%;height:100%;border:1px solid gray" id="container_{{ .tplName }}"></div>
+	</body>
+</html>
+<script type="text/javascript">
+	(function(){
+		{{/*设置地图相关属性*/}}
+        var polygonMap = new BMap.Map("container_{{ .tplName }}");
+        polygonMap.addControl(new BMap.NavigationControl());
+        polygonMap.addControl(new BMap.ScaleControl());
+        polygonMap.addControl(new BMap.OverviewMapControl());
+        polygonMap.addControl(new BMap.CopyrightControl());
+		polygonMap.enableContinuousZoom();
+
+		{{/*地图视图的中心点经纬度及视图级别*/}}
+        polygonMap.centerAndZoom(new BMap.Point({{ .midPoint.Lng}},{{ .midPoint.Lat }}), {{ .mapLevel }});
+
+		{{/*绘制多边形*/}}
+        var polygonPoints = [];
+		{{ range .polygonPoints }}
+			polygonPoints.push(new BMap.Point({{ .Lng }},{{ .Lat }}));
+		{{ end }}
+		{{/*设置多边形的显示属性，红边等*/}}
+        var polygonObject = new BMap.Polygon(polygonPoints);
+        polygonObject.setStrokeColor("red");
+        polygonMap.addOverlay(polygonObject);
+
+		{{/*开始绘制切出来的小格子*/}}
+		var gridPoints = [];
+		var gridPolygonObject;
+
+		{{/*完全被多边形包围的小格子*/}}
+		{{ range .inRectList }}
+			gridPoints = [];
+			{{ range .}}
+				 gridPoints.push(new BMap.Point({{ .Lng }},{{ .Lat }}));
+			{{ end }}
+			{{/*完全被包围的小格子边框为实线*/}}
+        	gridPolygonObject=new BMap.Polygon(gridPoints);
+        	gridPolygonObject.setStrokeWeight('1');
+        	polygonMap.addOverlay(gridPolygonObject);
+		{{ end }}
+
+		{{/*部分被多边形包围的小格子*/}}
+		{{ range .borderRectList }}
+			gridPoints = [];
+			{{ range .}}
+				gridPoints.push(new BMap.Point({{ .Lng }},{{ .Lat }}));
+			{{ end }}
+			{{/*半包围的小格子虚线边框、填充色较浅*/}}
+        	gridPolygonObject=new BMap.Polygon(gridPoints);
+        	gridPolygonObject.setStrokeWeight('1');
+        	gridPolygonObject.setStrokeStyle('dashed');
+        	gridPolygonObject.setFillColor('#F0F8FF');
+        	polygonMap.addOverlay(gridPolygonObject);
+		{{ end }}
+	})();
+</script>
+`

@@ -6,10 +6,14 @@
 package geo
 
 import (
+	"fmt"
 	"math"
+	"math/rand"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -103,4 +107,58 @@ func EarthDistance(point1, point2 GeoPoint) float64 {
 	theta := lng2 - lng1
 	dist := math.Acos(math.Sin(lat1)*math.Sin(lat2) + math.Cos(lat1)*math.Cos(lat2)*math.Cos(theta))
 	return dist * float64(EARTH_RADIUS)
+}
+
+/**
+随机生成指定数量的多边形，必须指定基本的矩形区域、顶点的最大个数及最小个数
+所有的这些多边形的边，非相邻的不能有交点！
+仅于校验之用，不保证性能！
+*/
+func GenPolygons(baseRect GeoRectangle, polygonNum, pointMinNum, pointMaxNum int) (ret []GeoPolygon) {
+	width := baseRect.Width()
+	height := baseRect.Height()
+	if width <= 0 || height <= 0 {
+		return
+	}
+	if polygonNum <= 0 {
+		return
+	}
+	if pointMaxNum < pointMinNum {
+		return
+	}
+	if pointMinNum < 3 {
+		return
+	}
+	fmt.Fprintf(os.Stdout, "start GenPolygons：baseRect[%d x %d] polygonNum[%d] pointMinNum[%d] pointMaxNum[%d]\n", int(width), int(height), polygonNum, pointMinNum, pointMaxNum)
+	diffNum := pointMaxNum - pointMinNum + 1
+	var randFloat float64
+	diffLat := baseRect.MaxLat - baseRect.MinLat
+	diffLng := baseRect.MaxLng - baseRect.MinLng
+	for i := 0; i < polygonNum; i++ {
+		rand.Seed(time.Now().UnixNano() + int64(i))
+		//顶点的数量
+		vertexNum := rand.Intn(diffNum) + pointMinNum
+		var points []GeoPoint
+		for vn := 0; vn < vertexNum; vn++ {
+			//确保一个多边形的边都不相交
+			for {
+				rand.Seed(time.Now().UnixNano() + int64(vn))
+				randFloat = rand.Float64()
+				lat := baseRect.MinLat + randFloat*diffLat
+				rand.Seed(time.Now().UnixNano() + int64(vn+1))
+				randFloat = rand.Float64()
+				lng := baseRect.MinLng + randFloat*diffLng
+				point := MakeGeoPoint(lat, lng)
+				points = append(points, point)
+				polygon := MakeGeoPolygon(points)
+				if polygon.IsBorderInterect() {
+					points = points[0 : len(points)-1]
+				} else {
+					break
+				}
+			}
+		}
+		ret = append(ret, MakeGeoPolygon(points))
+	}
+	return
 }
