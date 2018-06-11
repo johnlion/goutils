@@ -498,24 +498,31 @@ func (gp *GeoPolygon) IsPointInPolygon(p GeoPoint) bool {
 	//逐个顶点的判断
 	p1 = gp.Points[0]
 	points := gp.Points
+
+	//遍历所有的边，寻找跟此点向右发出的射线的相交情况
+	//所有跟此射线相交的边，必须有一部分在射线的下方
 	for i := 1; i < PNum; i++ {
-		//正好落在了顶点上
-		if p1.IsEqual(p) {
-			return true
-		}
 		//其他顶点
 		p2 = points[i%PNum]
+		//正好落在了顶点上
+		if p1.IsEqual(p) || p2.IsEqual(p) {
+			return true
+		}
+		maxLat := math.Max(p1.Lat, p2.Lat)
+		minLat := math.Min(p1.Lat, p2.Lat)
+		minLng := math.Min(p1.Lng, p2.Lng)
+		maxLng := math.Max(p1.Lng, p2.Lng)
 		//射线没有交点
-		if p.Lat < math.Min(p1.Lat, p2.Lat) || p.Lat > math.Max(p1.Lat, p2.Lat) {
+		if p.Lat < minLat || p.Lat > maxLat {
 			p1 = p2
 			continue
 		}
 		//射线有可能有交点
-		if p.Lat > math.Min(p1.Lat, p2.Lat) && p.Lat < math.Max(p1.Lat, p2.Lat) {
-			//东西向有交点
+		if p.Lat > minLat && p.Lat < maxLat {
+			//点在此边的左边
 			if p.Lng <= math.Max(p1.Lng, p2.Lng) {
 				//此边为一条横线
-				if p1.Lat == p2.Lat && p.Lng >= math.Min(p1.Lng, p2.Lng) {
+				if p1.Lat == p2.Lat && p.Lng >= minLng {
 					return true
 				}
 				//一条竖线
@@ -526,6 +533,7 @@ func (gp *GeoPolygon) IsPointInPolygon(p GeoPoint) bool {
 						interCount++
 					}
 				} else {
+					//判断是否相交
 					xInters := (p.Lat-p1.Lat)*(p2.Lng-p1.Lng)/(p2.Lat-p1.Lat) + p1.Lng
 					if math.Abs(p.Lng-xInters) < FLOAT_DIFF {
 						return true
@@ -536,11 +544,18 @@ func (gp *GeoPolygon) IsPointInPolygon(p GeoPoint) bool {
 				}
 			}
 		} else {
+			//正好在一条横线上
+			if p.Lat == p1.Lat && p1.Lat == p2.Lat && p.Lng >= minLng && p.Lng <= maxLng {
+				return true
+			}
+			//如果交点在边的顶点上
 			if p.Lat == p2.Lat && p.Lng <= p2.Lng {
+				//本处的多边形是始于第一个点，终于第一个点，此点在points出现两次，因为要做这样的判断
 				p3 := points[(i+1)%PNum]
 				if p3.IsEqual(p2) {
 					p3 = points[(i+2)%PNum]
 				}
+				//如果另一个边的另一个顶点在射线的上方，忽略此边，只算一次。否则都算
 				if p.Lat >= math.Min(p1.Lat, p3.Lat) && p.Lat <= math.Max(p1.Lat, p3.Lat) {
 					interCount++
 				} else {
