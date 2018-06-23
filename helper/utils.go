@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"unsafe"
+	"encoding/binary"
+	"math"
 )
 
 const N = int(unsafe.Sizeof(0))
@@ -54,4 +56,43 @@ func StrToJSON(str string) string {
 		}
 	}
 	return jsons.String()
+}
+
+
+//int64转byte
+func Int64ToBytes(i int64) []byte {
+	var buf = make([]byte, 8)
+	binary.BigEndian.PutUint64(buf, uint64(i))
+	return buf
+}
+
+//bytes转int64
+func BytesToInt64(buf []byte) int64 {
+	return int64(binary.BigEndian.Uint64(buf))
+}
+
+//float64转byte
+func Float64ToByte(float float64) []byte {
+	bits := math.Float64bits(float)
+	bytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(bytes, bits)
+	return bytes
+}
+
+//bytes转float
+func ByteToFloat64(bytes []byte) float64 {
+	bits := binary.BigEndian.Uint64(bytes)
+	return math.Float64frombits(bits)
+}
+
+//字符串转为字节切片
+func StrToByte(s string) []byte {
+	x := (*[2]uintptr)(unsafe.Pointer(&s))
+	h := [3]uintptr{x[0], x[1], x[1]}
+	return *(*[]byte)(unsafe.Pointer(&h))
+}
+
+//字节切片转为字符串
+func ByteToStr(b []byte) string {
+	return *(*string)(unsafe.Pointer(&b))
 }
